@@ -69,7 +69,7 @@ Create a `.env` file with the following variables:
 GEMINI_API_KEY=your_gemini_api_key
 SPEECH_KEY=your_azure_speech_key
 SPEECH_KEY_BACKUP=your_backup_azure_speech_key
-ENDPOINT_URL=https://southafricanorth.api.cognitive.microsoft.com/
+ENDPOINT_URL=endpoint
 ```
 
 ### Local Development
