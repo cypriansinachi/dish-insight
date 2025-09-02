@@ -65,13 +65,10 @@ def text_to_speech(text, output_format="wav"):
         # Set voice (you can customize this)
         speech_config.speech_synthesis_voice_name = "en-US-AriaNeural"
         
-        # Create audio output stream to capture audio data (not speaker)
-        audio_output = speechsdk.audio.AudioOutputConfig(filename=None)
-        
-        # Create synthesizer
+        # Create synthesizer without audio output config to capture data directly
         speech_synthesizer = speechsdk.SpeechSynthesizer(
             speech_config=speech_config, 
-            audio_config=audio_output
+            audio_config=None
         )
         
         print(f"Synthesizing speech for text: '{text}'")
@@ -111,10 +108,9 @@ def text_to_speech(text, output_format="wav"):
                 )
                 speech_config.speech_synthesis_voice_name = "en-US-AriaNeural"
                 
-                audio_output = speechsdk.audio.AudioOutputConfig(filename=None)
                 speech_synthesizer = speechsdk.SpeechSynthesizer(
                     speech_config=speech_config, 
-                    audio_config=audio_output
+                    audio_config=None
                 )
                 
                 result = speech_synthesizer.speak_text_async(text).get()
