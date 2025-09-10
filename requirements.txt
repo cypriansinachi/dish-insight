@@ -1,3 +1,6 @@
-"fastapi[standard]"
+fastapi[standard]
 google-generativeai
 azure-cognitiveservices-speech
+aiomysql
+python-dotenv
+pydantic
