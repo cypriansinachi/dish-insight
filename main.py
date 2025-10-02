@@ -10,6 +10,7 @@ from tts_service import get_pronunciation_audio
 from itinerary_ai_service import analyze_user_itinerary
 from activity_suggestion_service import get_suggestions_by_type_and_category, generate_category_description
 from db_connection import init_pool, close_pool
+from active_center_service import has_active_bookings, list_active_bookings
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -333,6 +334,54 @@ async def get_dish_pronunciation(dish_name: str):
         raise
     except Exception as e:
         logger.error(f"Error in get_dish_pronunciation: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
+
+# Active Center endpoints
+class ActiveCheckRequest(BaseModel):
+    user_id: int
+
+@app.post("/active-center/has-active")
+async def active_center_has_active(req: ActiveCheckRequest):
+    try:
+        if not req.user_id or req.user_id <= 0:
+            raise HTTPException(status_code=400, detail="Valid user_id is required")
+        details = await has_active_bookings(req.user_id)
+        has_any = any(details.values())
+        return {
+            "status": "success",
+            "message": "Active bookings status retrieved successfully",
+            "data": {
+                "has_active_bookings": has_any,
+                "details": details,
+            },
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error in active_center_has_active: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
+
+
+class ActiveListRequest(BaseModel):
+    user_id: int
+    per_page: Optional[int] = 10
+    page: Optional[int] = 1
+
+@app.post("/active-center/list")
+async def active_center_list(req: ActiveListRequest):
+    try:
+        if not req.user_id or req.user_id <= 0:
+            raise HTTPException(status_code=400, detail="Valid user_id is required")
+        result = await list_active_bookings(req.user_id, req.per_page or 10, req.page or 1)
+        return {
+            "status": "success",
+            "message": "Bookings retrieved successfully",
+            "data": result,
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error in active_center_list: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
 
 if __name__ == "__main__":
