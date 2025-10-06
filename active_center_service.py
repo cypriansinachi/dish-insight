@@ -130,6 +130,7 @@ async def list_active_bookings(
     user_email = user_row["email"] if user_row else None
 
     # Active bookings using only confirmed tables from PHP models
+    # Only include bookings with items currently active or in future
     sql_bookings = (
         """
         SELECT DISTINCT
@@ -144,18 +145,38 @@ async def list_active_bookings(
             b.id AS booking_identifier,
             CONCAT('BOK-', LPAD(b.id, 5, '0')) AS id
         FROM agent_bookings b
+        JOIN agent_booking_items i ON i.booking_id = b.id
         WHERE b.user_id = %s
+          AND (
+                (
+                  i.flight_reference_id IS NOT NULL
+                  AND DATE(i.departure_datetime) <= %s
+                  AND DATE(i.arrival_datetime) >= %s
+                )
+             OR (
+                  i.flight_reference_id IS NULL
+                  AND DATE(i.started_at) <= %s
+                  AND DATE(i.ended_at) >= %s
+                )
+             OR (
+                  i.flight_reference_id IS NOT NULL AND DATE(i.departure_datetime) > %s
+                )
+             OR (
+                  i.flight_reference_id IS NULL AND DATE(i.started_at) > %s
+                )
+          )
         ORDER BY b.created_at DESC
         LIMIT %s OFFSET %s
         """
     )
-    bookings_result = await fetch_all(sql_bookings, (user_id, per_page, offset))
+    bookings_result = await fetch_all(sql_bookings, (user_id, today, today, today, today, today, today, per_page, offset))
     if bookings_result:
         bookings: List[Dict[str, Any]] = list(bookings_result)
     else:
         bookings: List[Dict[str, Any]] = []
 
     # Events (owned) — using ONLY exact columns from PHP model
+    # Only include events that are active (today or future)
     sql_events_owned = (
         """
         SELECT 
@@ -193,11 +214,16 @@ async def list_active_bookings(
         FROM user_events e
         LEFT JOIN users u ON u.id = e.user_id
         WHERE e.user_id = %s
+          AND EXISTS (
+            SELECT 1 FROM user_event_dates d
+            WHERE d.user_event_id = e.id
+              AND (d.date > %s OR (d.date = %s AND d.start_time > CURTIME()))
+          )
         ORDER BY e.created_at DESC
         LIMIT %s OFFSET %s
         """
     )
-    events_owned_result = await fetch_all(sql_events_owned, (user_id, user_id, per_page, offset))
+    events_owned_result = await fetch_all(sql_events_owned, (user_id, user_id, today, today, per_page, offset))
     if events_owned_result:
         events_owned: List[Dict[str, Any]] = list(events_owned_result)
     else:
@@ -247,11 +273,16 @@ async def list_active_bookings(
                 SELECT 1 FROM user_event_cohosts c2
                 WHERE c2.user_event_id = e.id AND c2.email = %s
             )
+              AND EXISTS (
+                SELECT 1 FROM user_event_dates d
+                WHERE d.user_event_id = e.id
+                  AND (d.date > %s OR (d.date = %s AND d.start_time > CURTIME()))
+              )
             ORDER BY e.created_at DESC
             LIMIT %s OFFSET %s
             """
         )
-        events_cohost_result = await fetch_all(sql_events_cohost, (user_email, user_email, per_page, offset))
+        events_cohost_result = await fetch_all(sql_events_cohost, (user_email, user_email, today, today, per_page, offset))
         if events_cohost_result:
             events_cohost = list(events_cohost_result)
         else:
@@ -260,20 +291,44 @@ async def list_active_bookings(
     # Combine all bookings
     all_bookings = bookings + events_owned + events_cohost
 
-    # Calculate total count for pagination
+    # Calculate total count for pagination - only count active bookings/events
     sql_total_count = (
         """
         SELECT COUNT(*) as total
         FROM (
             SELECT DISTINCT b.id
             FROM agent_bookings b
+            JOIN agent_booking_items i ON i.booking_id = b.id
             WHERE b.user_id = %s
+              AND (
+                    (
+                      i.flight_reference_id IS NOT NULL
+                      AND DATE(i.departure_datetime) <= %s
+                      AND DATE(i.arrival_datetime) >= %s
+                    )
+                 OR (
+                      i.flight_reference_id IS NULL
+                      AND DATE(i.started_at) <= %s
+                      AND DATE(i.ended_at) >= %s
+                    )
+                 OR (
+                      i.flight_reference_id IS NOT NULL AND DATE(i.departure_datetime) > %s
+                    )
+                 OR (
+                      i.flight_reference_id IS NULL AND DATE(i.started_at) > %s
+                    )
+              )
             
             UNION ALL
             
             SELECT DISTINCT e.id
             FROM user_events e
             WHERE e.user_id = %s
+              AND EXISTS (
+                SELECT 1 FROM user_event_dates d
+                WHERE d.user_event_id = e.id
+                  AND (d.date > %s OR (d.date = %s AND d.start_time > CURTIME()))
+              )
             
             UNION ALL
             
@@ -283,10 +338,15 @@ async def list_active_bookings(
                 SELECT 1 FROM user_event_cohosts c2
                 WHERE c2.user_event_id = e.id AND c2.email = %s
             )
+              AND EXISTS (
+                SELECT 1 FROM user_event_dates d
+                WHERE d.user_event_id = e.id
+                  AND (d.date > %s OR (d.date = %s AND d.start_time > CURTIME()))
+              )
         ) as combined
         """
     )
-    total_result = await fetch_one(sql_total_count, (user_id, user_id, user_email))
+    total_result = await fetch_one(sql_total_count, (user_id, today, today, today, today, today, today, user_id, today, today, user_email, today, today))
     total_count = total_result["total"] if total_result else len(all_bookings)
     
     last_page = (total_count + per_page - 1) // per_page
